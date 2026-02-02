@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Remote PC - AnyDesk Clone</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; overflow: hidden; }
+        #loginPanel { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .logo { font-size: 48px; margin-bottom: 10px; }
+        .title { color: white; font-size: 28px; font-weight: bold; margin-bottom: 40px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .login-box { background: white; border-radius: 20px; padding: 30px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; color: #667eea; font-weight: 600; margin-bottom: 8px; font-size: 14px; }
+        .input-group input { width: 100%; padding: 15px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 16px; transition: all 0.3s; }
+        .input-group input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1); }
+        .connect-btn { width: 100%; padding: 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; transition: transform 0.2s; }
+        .connect-btn:active { transform: scale(0.98); }
+        .status { text-align: center; color: #667eea; margin-top: 15px; font-size: 14px; min-height: 20px; }
+        .info { text-align: center; color: #888; font-size: 12px; margin-top: 20px; }
+        #controlPanel { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
+        #controlPanel.active { display: block; }
+        #screen { width: 100%; height: 100%; object-fit: contain; background: #000; position: relative; }
+        .cursor { position: absolute; width: 20px; height: 20px; pointer-events: none; z-index: 999; transition: all 0.05s linear; }
+        .cursor::before { content: ''; position: absolute; width: 0; height: 0; border-left: 10px solid white; border-right: 10px solid transparent; border-bottom: 14px solid transparent; border-top: 14px solid white; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5)); }
+        .stats-bar { position: fixed; top: 0; left: 0; right: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px); padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; }
+        .stats-item { color: #00ff00; font-size: 14px; font-weight: bold; font-family: monospace; }
+        .controls-bar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(10px); padding: 15px; display: flex; justify-content: space-around; flex-wrap: wrap; z-index: 1000; }
+        .control-btn { background: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 10px; padding: 12px 15px; font-size: 12px; font-weight: bold; cursor: pointer; transition: all 0.2s; margin: 2px; }
+        .control-btn:active { background: rgba(255, 255, 255, 0.4); transform: scale(0.95); }
+        .disconnect-btn { background: rgba(255, 0, 0, 0.8) !important; }
+        .keyboard-btn { position: fixed; right: 20px; bottom: 100px; width: 60px; height: 60px; background: rgba(102, 126, 234, 0.9); color: white; border: none; border-radius: 50%; font-size: 24px; cursor: pointer; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .settings-btn { position: fixed; top: 10px; right: 10px; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 50%; font-size: 20px; cursor: pointer; z-index: 1000; }
+        .quality-menu { position: fixed; top: 60px; right: 10px; background: rgba(0, 0, 0, 0.9); border-radius: 10px; padding: 10px; display: none; z-index: 1001; }
+        .quality-menu.active { display: block; }
+        .quality-btn { background: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 5px; padding: 8px 15px; margin: 5px; font-size: 12px; cursor: pointer; display: block; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="loginPanel">
+        <div class="logo">🖥️</div>
+        <div class="title">Remote PC</div>
+        <div class="login-box">
+            <div class="input-group">
+                <label>🌐 IP адрес ПК</label>
+                <input type="text" id="ipInput" placeholder="192.168.1.100">
+            </div>
+            <div class="input-group">
+                <label>🔐 Пароль</label>
+                <input type="password" id="passwordInput" value="12345">
+            </div>
+            <button class="connect-btn" onclick="connect()">🚀 Подключиться</button>
+            <div class="status" id="status"></div>
+            <div class="info">⚡ Полный функционал AnyDesk</div>
+        </div>
+    </div>
+    <div id="controlPanel">
+        <button class="settings-btn" onclick="toggleSettings()">⚙️</button>
+        <div class="quality-menu" id="qualityMenu">
+            <button class="quality-btn" onclick="setQuality('low')">Низкое качество</button>
+            <button class="quality-btn" onclick="setQuality('medium')">Среднее качество</button>
+            <button class="quality-btn" onclick="setQuality('high')">Высокое качество</button>
+        </div>
+        <div class="stats-bar">
+            <div class="stats-item" id="fpsCounter">FPS: 0</div>
+            <div class="stats-item">⚡ Connected</div>
+            <div class="stats-item" id="pingCounter">Ping: 0ms</div>
+        </div>
+        <img id="screen" alt="Screen">
+        <div class="cursor" id="cursor"></div>
+        <button class="keyboard-btn" onclick="showKeyboard()">⌨️</button>
+        <div class="controls-bar">
+            <button class="control-btn" onclick="sendCtrlAltDel()">Ctrl+Alt+Del</button>
+            <button class="control-btn" onclick="sendRightClick()">Правая кнопка</button>
+            <button class="control-btn" onclick="sendWinKey()">Win</button>
+            <button class="control-btn" onclick="toggleFullscreen()">🔲 Полный экран</button>
+            <button class="control-btn disconnect-btn" onclick="disconnect()">❌ Отключить</button>
+        </div>
+    </div>
+    <script>
+        let connected = false, ws = null, serverIp = '', screenWidth = 1280, screenHeight = 720;
+        let fpsCounter = 0, lastFpsTime = Date.now(), pingTime = 0;
+        let cursorX = 0, cursorY = 0, mouseDown = false;
+        
+        function connect() {
+            serverIp = document.getElementById('ipInput').value.trim();
+            const password = document.getElementById('passwordInput').value.trim();
+            if (!serverIp) { showStatus('Введите IP', 'error'); return; }
+            showStatus('Подключение...', 'info');
+            
+            const img = document.getElementById('screen');
+            img.src = `http://${serverIp}:5000/video_feed?t=${Date.now()}`;
+            img.onload = () => {
+                document.getElementById('loginPanel').style.display = 'none';
+                document.getElementById('controlPanel').classList.add('active');
+                connected = true;
+                startVideoStream();
+                connectWebSocket();
+                setupControls();
+            };
+            img.onerror = () => showStatus('Ошибка подключения. Проверь IP и запущен ли сервер на ПК', 'error');
+        }
+        
+        function startVideoStream() {
+            const img = document.getElementById('screen');
+            function updateFrame() {
+                if (!connected) return;
+                img.src = `http://${serverIp}:5000/video_feed?r=${Math.random()}`;
+                fpsCounter++;
+                const now = Date.now();
+                if (now - lastFpsTime >= 1000) {
+                    document.getElementById('fpsCounter').textContent = `FPS: ${fpsCounter}`;
+                    fpsCounter = 0;
+                    lastFpsTime = now;
+                }
+            }
+            img.onload = updateFrame;
+            updateFrame();
+        }
+        
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${serverIp}:5000/ws`);
+            ws.onopen = () => console.log('WebSocket connected');
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'pong') {
+                    pingTime = Date.now() - data.timestamp;
+                    document.getElementById('pingCounter').textContent = `Ping: ${pingTime}ms`;
+                }
+            };
+            ws.onerror = () => showStatus('Ошибка WebSocket', 'error');
+            setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({action: 'ping', timestamp: Date.now()})); }, 2000);
+        }
+        
+        function setupControls() {
+            const screen = document.getElementById('screen');
+            const cursor = document.getElementById('cursor');
+            
+            screen.addEventListener('touchstart', handleTouch, {passive: false});
+            screen.addEventListener('touchmove', handleTouch, {passive: false});
+            screen.addEventListener('touchend', handleTouch, {passive: false});
+            
+            function handleTouch(e) {
+                e.preventDefault();
+                if (!connected) return;
+                const touch = e.touches[0] || e.changedTouches[0];
+                const rect = screen.getBoundingClientRect();
+                const x = Math.floor((touch.clientX - rect.left) / rect.width * screenWidth);
+                const y = Math.floor((touch.clientY - rect.top) / rect.height * screenHeight);
+                
+                cursorX = touch.clientX - rect.left;
+                cursorY = touch.clientY - rect.top;
+                cursor.style.left = cursorX + 'px';
+                cursor.style.top = cursorY + 'px';
+                
+                let action = '';
+                if (e.type === 'touchstart') { action = 'mouse_down'; mouseDown = true; }
+                else if (e.type === 'touchmove') { action = mouseDown ? 'mouse_move' : ''; }
+                else if (e.type === 'touchend') { action = 'mouse_up'; mouseDown = false; }
+                
+                if (action) sendCommand({action, x, y, button: 'left'});
+            }
+        }
+        
+        function sendCommand(cmd) {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(cmd));
+        }
+        
+        function sendCtrlAltDel() {
+            sendCommand({action: 'hotkey', keys: ['ctrl', 'alt', 'delete']});
+        }
+        
+        function sendRightClick() {
+            sendCommand({action: 'mouse_click', button: 'right'});
+        }
+        
+        function sendWinKey() {
+            sendCommand({action: 'key_press', key: 'win'});
+        }
+        
+        function toggleFullscreen() {
+            const elem = document.getElementById('controlPanel');
+            if (!document.fullscreenElement) {
+                if (elem.requestFullscreen) elem.requestFullscreen();
+                else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            }
+        }
+        
+        function showKeyboard() {
+            const text = prompt('Введите текст:');
+            if (text) sendCommand({action: 'key_type', text});
+        }
+        
+        function disconnect() {
+            connected = false;
+            if (ws) ws.close();
+            document.getElementById('loginPanel').style.display = 'flex';
+            document.getElementById('controlPanel').classList.remove('active');
+        }
+        
+        function showStatus(msg, type) {
+            const status = document.getElementById('status');
+            status.textContent = msg;
+            status.style.color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#6bcf7f' : '#667eea';
+        }
+        
+        function toggleSettings() {
+            const menu = document.getElementById('qualityMenu');
+            menu.classList.toggle('active');
+        }
+        
+        function setQuality(quality) {
+            const qualities = { low: 50, medium: 75, high: 95 };
+            sendCommand({action: 'set_quality', quality: qualities[quality]});
+            toggleSettings();
+            showStatus(`Качество изменено на ${quality}`, 'success');
+        }
+    </script>
+</body>
+</html>

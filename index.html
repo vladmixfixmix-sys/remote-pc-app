@@ -22,6 +22,7 @@
         .connect-btn:active { transform: scale(0.98); }
         .status { text-align: center; color: #667eea; margin-top: 15px; font-size: 14px; min-height: 20px; }
         .info { text-align: center; color: #888; font-size: 12px; margin-top: 20px; }
+        .hint { text-align: center; color: #00c853; font-size: 11px; margin-top: 10px; font-weight: bold; }
         #controlPanel { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
         #controlPanel.active { display: block; }
         #screen { width: 100%; height: 100%; object-fit: contain; background: #000; position: relative; }
@@ -46,8 +47,8 @@
         <div class="title">Remote PC</div>
         <div class="login-box">
             <div class="input-group">
-                <label>🌐 IP адрес ПК</label>
-                <input type="text" id="ipInput" placeholder="192.168.1.100">
+                <label>🌐 Tailscale IP компа</label>
+                <input type="text" id="ipInput" placeholder="100.x.x.x:5000" value="">
             </div>
             <div class="input-group">
                 <label>🔐 Пароль</label>
@@ -55,7 +56,8 @@
             </div>
             <button class="connect-btn" onclick="connect()">🚀 Подключиться</button>
             <div class="status" id="status"></div>
-            <div class="info">⚡ Полный функционал AnyDesk</div>
+            <div class="hint">💡 Введи Tailscale IP один раз - он сохранится!</div>
+            <div class="info">⚡ Прямое соединение - минимальная задержка!</div>
         </div>
     </div>
     <div id="controlPanel">
@@ -67,7 +69,7 @@
         </div>
         <div class="stats-bar">
             <div class="stats-item" id="fpsCounter">FPS: 0</div>
-            <div class="stats-item">⚡ Connected</div>
+            <div class="stats-item">⚡ Tailscale</div>
             <div class="stats-item" id="pingCounter">Ping: 0ms</div>
         </div>
         <img id="screen" alt="Screen">
@@ -86,30 +88,57 @@
         let fpsCounter = 0, lastFpsTime = Date.now(), pingTime = 0;
         let cursorX = 0, cursorY = 0, mouseDown = false;
         
+        // Загрузка сохраненного IP
+        window.onload = function() {
+            const savedIp = localStorage.getItem('tailscale_ip');
+            if (savedIp) {
+                document.getElementById('ipInput').value = savedIp;
+            }
+        };
+        
         function connect() {
             serverIp = document.getElementById('ipInput').value.trim();
             const password = document.getElementById('passwordInput').value.trim();
-            if (!serverIp) { showStatus('Введите IP', 'error'); return; }
-            showStatus('Подключение...', 'info');
+            
+            if (!serverIp) { 
+                showStatus('Введи Tailscale IP (100.x.x.x:5000)', 'error'); 
+                return; 
+            }
+            
+            // Сохранение IP
+            localStorage.setItem('tailscale_ip', serverIp);
+            
+            // Убираем http:// если есть
+            serverIp = serverIp.replace(/^https?:\/\//, '');
+            
+            // Добавляем :5000 если нет
+            if (!serverIp.includes(':')) {
+                serverIp += ':5000';
+            }
+            
+            showStatus('Подключение через Tailscale...', 'info');
             
             const img = document.getElementById('screen');
-            img.src = `http://${serverIp}:5000/video_feed?t=${Date.now()}`;
+            img.src = `http://${serverIp}/video_feed?t=${Date.now()}`;
             img.onload = () => {
                 document.getElementById('loginPanel').style.display = 'none';
                 document.getElementById('controlPanel').classList.add('active');
                 connected = true;
                 startVideoStream();
-                connectWebSocket();
+                connectWebSocket(password);
                 setupControls();
+                showStatus('', 'success');
             };
-            img.onerror = () => showStatus('Ошибка подключения. Проверь IP и запущен ли сервер на ПК', 'error');
+            img.onerror = () => {
+                showStatus('Ошибка! Проверь: 1) Tailscale запущен на ПК и телефоне 2) Сервер запущен 3) IP правильный', 'error');
+            };
         }
         
         function startVideoStream() {
             const img = document.getElementById('screen');
             function updateFrame() {
                 if (!connected) return;
-                img.src = `http://${serverIp}:5000/video_feed?r=${Math.random()}`;
+                img.src = `http://${serverIp}/video_feed?r=${Math.random()}`;
                 fpsCounter++;
                 const now = Date.now();
                 if (now - lastFpsTime >= 1000) {
@@ -122,18 +151,37 @@
             updateFrame();
         }
         
-        function connectWebSocket() {
-            ws = new WebSocket(`ws://${serverIp}:5000/ws`);
-            ws.onopen = () => console.log('WebSocket connected');
+        function connectWebSocket(password) {
+            ws = new WebSocket(`ws://${serverIp}/ws`);
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                // Авторизация
+                ws.send(JSON.stringify({
+                    action: 'auth',
+                    password: password
+                }));
+            };
             ws.onmessage = (e) => {
                 const data = JSON.parse(e.data);
-                if (data.type === 'pong') {
+                if (data.type === 'auth_response') {
+                    if (data.success) {
+                        console.log('Авторизован!');
+                        screenWidth = data.width || 1280;
+                        screenHeight = data.height || 720;
+                    } else {
+                        showStatus('Неверный пароль!', 'error');
+                        disconnect();
+                    }
+                } else if (data.type === 'pong') {
                     pingTime = Date.now() - data.timestamp;
                     document.getElementById('pingCounter').textContent = `Ping: ${pingTime}ms`;
                 }
             };
             ws.onerror = () => showStatus('Ошибка WebSocket', 'error');
-            setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({action: 'ping', timestamp: Date.now()})); }, 2000);
+            setInterval(() => { 
+                if (ws && ws.readyState === WebSocket.OPEN) 
+                    ws.send(JSON.stringify({action: 'ping', timestamp: Date.now()})); 
+            }, 2000);
         }
         
         function setupControls() {
@@ -158,11 +206,17 @@
                 cursor.style.top = cursorY + 'px';
                 
                 let action = '';
-                if (e.type === 'touchstart') { action = 'mouse_down'; mouseDown = true; }
-                else if (e.type === 'touchmove') { action = mouseDown ? 'mouse_move' : ''; }
-                else if (e.type === 'touchend') { action = 'mouse_up'; mouseDown = false; }
-                
-                if (action) sendCommand({action, x, y, button: 'left'});
+                if (e.type === 'touchstart') { 
+                    action = 'mouse_move';
+                    sendCommand({action, x, y});
+                    setTimeout(() => {
+                        sendCommand({action: 'mouse_click', x, y, button: 'left', clicks: 1});
+                    }, 50);
+                }
+                else if (e.type === 'touchmove') { 
+                    action = 'mouse_move';
+                    sendCommand({action, x, y});
+                }
             }
         }
         
